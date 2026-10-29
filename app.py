@@ -102,8 +102,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-mp_drawing = mp.solutions.drawing_utils
-mp_pose = mp.solutions.pose
+mp_drawing = mp.python.solutions.drawing_utils
+mp_pose = mp.python.solutions.pose
 
 
 def calcola_angolo(a, b, c):
