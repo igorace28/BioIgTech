@@ -102,8 +102,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-mp_drawing = mp.solutions.drawing_utils
-mp_pose = mp.solutions.pose
+# Inizializzazione sicura e compatibile al 100% di MediaPipe
+try:
+    mp_drawing = mp.solutions.drawing_utils
+    mp_pose = mp.solutions.pose
+except AttributeError:
+    import mediapipe.python.solutions as mp_solutions
+    mp_drawing = mp_solutions.drawing_utils
+    mp_pose = mp_solutions.pose
 
 
 def calcola_angolo(a, b, c):
