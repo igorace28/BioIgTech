@@ -1,5 +1,5 @@
 streamlit
-opencv-python-headless==4.8.1.78
-mediapipe
+opencv-python-headless
+mediapipe==0.10.14
 numpy
 pandas
