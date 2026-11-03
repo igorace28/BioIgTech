@@ -102,7 +102,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Inizializzazione pulita di MediaPipe (con versione stabile 0.10.14)
+# Inizializzazione pulita di MediaPipe
 mp_drawing = mp.solutions.drawing_utils
 mp_pose = mp.solutions.pose
 
