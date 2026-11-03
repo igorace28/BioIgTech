@@ -1,8 +1,19 @@
 import base64
 import os
-import tempfile
-import cv2
-import mediapipe as mp
+import subprocess
+import sys
+
+# Installazione automatica e sicura delle dipendenze al volo (bypassa i conflitti di Streamlit)
+try:
+    import cv2
+    import mediapipe as mp
+except ImportError:
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", "opencv-python-headless", "mediapipe==0.10.14"]
+    )
+    import cv2
+    import mediapipe as mp
+
 import numpy as np
 import pandas as pd
 import streamlit as st
