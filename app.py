@@ -1,6 +1,8 @@
 import base64
 import hashlib
 import os
+import shutil
+import subprocess
 import tempfile
 
 import cv2
@@ -11,7 +13,7 @@ import streamlit as st
 
 
 # ============================================================
-# CONFIGURAZIONE PAGINA
+# CONFIGURAZIONE E FUNZIONI DI SUPPORTO
 # ============================================================
 
 st.set_page_config(
@@ -22,12 +24,13 @@ st.set_page_config(
 )
 
 
-# ============================================================
-# GESTIONE FILE TEMPORANEI
-# ============================================================
+def crea_file_temporaneo(suffisso):
+    fd, percorso = tempfile.mkstemp(suffix=suffisso)
+    os.close(fd)
+    return percorso
+
 
 def elimina_file(percorso):
-    """Elimina un file temporaneo, se esiste."""
     if percorso and os.path.exists(percorso):
         try:
             os.remove(percorso)
@@ -35,6 +38,61 @@ def elimina_file(percorso):
             pass
 
 
+def converti_in_mp4_browser(input_path, output_path):
+    """Converte il video in MP4 H.264 / AAC adatto alla riproduzione web."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError(
+            "FFmpeg non è installato sul server. "
+            "Verifica che packages.txt contenga la riga ffmpeg."
+        )
+
+    comando = [
+        ffmpeg, "-y", "-i", input_path,
+        "-map", "0:v:0", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "veryfast",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        "-c:a", "aac", "-b:a", "128k",
+        "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        output_path,
+    ]
+    risultato = subprocess.run(
+        comando, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    if risultato.returncode != 0 or not os.path.exists(output_path):
+        dettaglio = risultato.stderr[-1500:] if risultato.stderr else ""
+        raise RuntimeError(f"Conversione video non riuscita. {dettaglio}")
+
+
+def calcola_angolo(a, b, c):
+    """Calcola l'angolo in gradi con vertice nel punto B."""
+    a = np.asarray(a, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64)
+    c = np.asarray(c, dtype=np.float64)
+    v1, v2 = a - b, c - b
+    n1, n2 = np.linalg.norm(v1), np.linalg.norm(v2)
+    if n1 == 0 or n2 == 0:
+        return 0.0
+    coseno = np.dot(v1, v2) / (n1 * n2)
+    return float(np.degrees(np.arccos(np.clip(coseno, -1.0, 1.0))))
+
+
+# Stato della sessione
+for chiave, valore in {
+    "analizzato": False,
+    "pose_data": [],
+    "output_path": None,
+    "video_hash": None,
+    "browser_video_path": None,
+}.items():
+    if chiave not in st.session_state:
+        st.session_state[chiave] = valore
+
+
+# ============================================================
+# DESIGN CSS PERSONALIZZATO
+# ============================================================
 def crea_file_temporaneo(suffisso):
     """Crea un percorso temporaneo senza lasciare aperto il file."""
     fd, percorso = tempfile.mkstemp(suffix=suffisso)
