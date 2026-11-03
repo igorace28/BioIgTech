@@ -102,14 +102,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Inizializzazione sicura e robusta di MediaPipe
-if hasattr(mp, 'solutions'):
-    mp_drawing = mp.solutions.drawing_utils
-    mp_pose = mp.solutions.pose
-else:
-    import mediapipe.python.solutions as mp_solutions
-    mp_drawing = mp_solutions.drawing_utils
-    mp_pose = mp_solutions.pose
+mp_drawing = mp.solutions.drawing_utils
+mp_pose = mp.solutions.pose
 
 
 def calcola_angolo(a, b, c):
