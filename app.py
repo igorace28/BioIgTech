@@ -10,6 +10,7 @@ import mediapipe as mp
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 # ============================================================
@@ -63,6 +64,20 @@ def converti_in_mp4_browser(input_path, output_path):
     if risultato.returncode != 0 or not os.path.exists(output_path):
         dettaglio = risultato.stderr[-1500:] if risultato.stderr else ""
         raise RuntimeError(f"Conversione video non riuscita. {dettaglio}")
+
+
+
+def mostra_video_browser(video_bytes, altezza=420):
+    """Mostra il video con il player HTML nativo, evitando l'endpoint media di Streamlit."""
+    video_base64 = base64.b64encode(video_bytes).decode("ascii")
+    html = f"""
+    <video controls playsinline preload="metadata"
+           style="width:100%; max-height:{altezza}px; background:#111; border-radius:12px;">
+      <source src="data:video/mp4;base64,{video_base64}" type="video/mp4">
+      Il browser non riesce a riprodurre questo video.
+    </video>
+    """
+    components.html(html, height=altezza + 20, scrolling=False)
 
 
 def calcola_angolo(a, b, c):
@@ -436,7 +451,9 @@ if uploaded_file is None:
 
     # Se non c'è un video caricato, eliminiamo i risultati precedenti.
     elimina_file(st.session_state.get("output_path"))
+    elimina_file(st.session_state.get("browser_video_path"))
 
+    st.session_state["browser_video_path"] = None
     st.session_state["output_path"] = None
     st.session_state["pose_data"] = []
     st.session_state["analizzato"] = False
@@ -455,6 +472,8 @@ else:
     if video_hash != st.session_state["video_hash"]:
 
         elimina_file(st.session_state.get("output_path"))
+        elimina_file(st.session_state.get("browser_video_path"))
+        st.session_state["browser_video_path"] = None
 
         st.session_state["output_path"] = None
         st.session_state["pose_data"] = []
@@ -465,7 +484,31 @@ else:
 
     with col1:
         st.subheader("📹 Video Originale")
-        st.video(video_bytes)
+        try:
+            percorso_browser = st.session_state.get("browser_video_path")
+            if not percorso_browser or not os.path.exists(percorso_browser):
+                percorso_browser = crea_file_temporaneo(".mp4")
+                sorgente_temporanea = crea_file_temporaneo(
+                    os.path.splitext(uploaded_file.name)[1].lower() or ".mp4"
+                )
+                try:
+                    with open(sorgente_temporanea, "wb") as file:
+                        file.write(video_bytes)
+                    converti_in_mp4_browser(sorgente_temporanea, percorso_browser)
+                    st.session_state["browser_video_path"] = percorso_browser
+                    percorso_browser = None
+                finally:
+                    elimina_file(sorgente_temporanea)
+                    elimina_file(percorso_browser)
+
+            with open(st.session_state["browser_video_path"], "rb") as file:
+                video_originale_browser = file.read()
+            mostra_video_browser(video_originale_browser)
+        except Exception as errore_video:
+            st.warning(
+                "Non è stato possibile preparare il video per la riproduzione: "
+                f"{errore_video}"
+            )
 
     avvia_analisi = st.sidebar.button(
         "🚀 Avvia Analisi Biomeccanica",
@@ -481,6 +524,7 @@ else:
 
         input_path = None
         output_path = None
+        intermediate_path = None
         cap = None
         out = None
 
@@ -537,38 +581,22 @@ else:
                     float(orig_fps) / float(slow_factor),
                 )
 
-                # Creazione file video elaborato.
+                # OpenCV scrive un AVI intermedio; FFmpeg lo converte poi
+                # in MP4 H.264, più compatibile con i browser.
+                intermediate_path = crea_file_temporaneo(".avi")
                 output_path = crea_file_temporaneo(".mp4")
 
-                # Proviamo prima AVC1, poi MP4V come alternativa.
-                codec_utilizzati = ["avc1", "mp4v"]
+                fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+                out = cv2.VideoWriter(
+                    intermediate_path,
+                    fourcc,
+                    new_fps,
+                    (width, height),
+                )
 
-                for codec in codec_utilizzati:
-
-                    if out is not None:
-                        out.release()
-                        out = None
-
-                    elimina_file(output_path)
-
-                    fourcc = cv2.VideoWriter_fourcc(
-                        *codec
-                    )
-
-                    out = cv2.VideoWriter(
-                        output_path,
-                        fourcc,
-                        new_fps,
-                        (width, height),
-                    )
-
-                    if out.isOpened():
-                        break
-
-                if out is None or not out.isOpened():
+                if not out.isOpened():
                     raise RuntimeError(
-                        "Non è stato possibile creare il video "
-                        "elaborato. Il codec video non è disponibile."
+                        "Non è stato possibile creare il video intermedio."
                     )
 
                 pose_data = []
@@ -1154,11 +1182,21 @@ else:
                     )
 
                 if (
-                    not os.path.exists(output_path)
-                    or os.path.getsize(output_path) == 0
+                    not intermediate_path
+                    or not os.path.exists(intermediate_path)
+                    or os.path.getsize(intermediate_path) == 0
                 ):
                     raise RuntimeError(
-                        "Il video elaborato non è stato creato correttamente."
+                        "Il video intermedio elaborato non è stato creato correttamente."
+                    )
+
+                converti_in_mp4_browser(intermediate_path, output_path)
+                elimina_file(intermediate_path)
+                intermediate_path = None
+
+                if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+                    raise RuntimeError(
+                        "La conversione del video elaborato in MP4 non è riuscita."
                     )
 
                 # Salvataggio risultati nella sessione.
@@ -1190,6 +1228,7 @@ else:
                 out.release()
 
             elimina_file(input_path)
+            elimina_file(intermediate_path)
             elimina_file(output_path)
 
 
@@ -1214,10 +1253,7 @@ else:
                 with open(percorso_output, "rb") as file:
                     video_elaborato = file.read()
 
-                st.video(
-                    video_elaborato,
-                    format="video/mp4",
-                )
+                mostra_video_browser(video_elaborato)
 
         else:
 
